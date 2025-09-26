@@ -208,94 +208,26 @@ class BarThread(QThread):
         self.is_running = False
         self.terminate()
 
-class DataWorker(QObject):
-    update_plot_signal = pyqtSignal()
-    def __init__(self, data_class):
-        super().__init__()
-        self.data_obj = data_class
-        self.timer = QTimer()
-        self.timer.setInterval(10)
-        self.timer.timeout.connect(self.update_data)
-        self.timer.start()
-        self.plot_enable= False
-        self.data_pointer = 0
-
-    @pyqtSlot()
-    def update_data(self):
-        if (len(self.data_obj.time_data) > self.data_pointer) and self.plot_enable:
-            # # Extract timestamp and append it
-            #timestamp_str = compensated_data['timestamp'][0]
-            #timestamp = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").microsecond
-            compensated_data = [self.data_obj.strain_1_data_raw[self.data_pointer] - self.data_obj.strain_offsets[0], 
-                                self.data_obj.strain_2_data_raw[self.data_pointer] - self.data_obj.strain_offsets[1],
-                                self.data_obj.strain_3_data_raw[self.data_pointer] - self.data_obj.strain_offsets[2]]
-
-            # # Append compensated strain values for plotting, multiplied by 10^6 to convert to µV/V
-            self.data_obj.strain_1_data.append(compensated_data[0]* 1e3)
-            self.data_obj.strain_2_data.append(compensated_data[1]* 1e3)
-            self.data_obj.strain_3_data.append(compensated_data[2]* 1e3)
-            
-            
-            #c1 c2 c3 are constant or can be modified through main window
-            f_ax_data_temp =( (compensated_data[0] /self.data_obj.c1) +
-            (compensated_data[1]/ self.data_obj.c2 )+ (compensated_data[2]/ self.data_obj.c3)) / (3)
-
-            self.data_obj.f_ax_data.append(f_ax_data_temp)
-            
-            basis_x = [(compensated_data[0] /self.data_obj.c1), -(compensated_data[1]/ self.data_obj.c2 ), (compensated_data[2]/ self.data_obj.c3)]
-            basis_y = [(compensated_data[0] /self.data_obj.c1), -(compensated_data[1]/ self.data_obj.c2 ), -(compensated_data[2]/ self.data_obj.c3)]
-            
-            Lx = [0, 4.33, 4.33]
-            Ly = [5, 0.0025, 0.0025]
-            
-            m_x = sum(basis_x[i]*Lx[i] for i in range(len(basis_x)))
-            m_y = sum(basis_y[i]*Ly[i] for i in range(len(basis_y)))
-            self.data_obj.mx.append(m_x)
-            self.data_obj.my.append(m_y)
-            self.data_obj.m_total.append(math.sqrt((m_x*m_x)+(m_y*m_y)))
-
-
-            #Start plotting only from 90 values
-            # if len(self.time_data) > self.window_span and not self.plot_timer_started:
-            #     
-            self.data_pointer +=1
-            print(self.data_pointer)
-            self.update_plot_signal.emit()
-    
-    @pyqtSlot()
-    def start_data_worker(self):
-        self.plot_enable = True
-        print("Plot started")
-    
-    @pyqtSlot()
-    def stop_data_worker(self):
-        self.plot_enable = False
-        print("Plot stopped")
-
-    
+        
     
 class DevicePlotTab(QWidget):
     def __init__(self, device_address):
         super().__init__()
         self.device_address = device_address
         self.ble_task = None
-        self.worker = None
-        self.worker_thread = None
         self.c1 = 0.01
         self.c2 = 0.01
         self.c3 = 0.01
         self.inputDialogConstants = None
         self.task_running = False
         self.window_span = 1000
-        self.window_step= 20
+        self.window_step= 100
         self.plotter_count = 0
         self.time_record = 0
         #define initial offsets
         self.strain_offsets = [0, 0, 0]
         self.progress_thread = None
         self.informative_bar = QProgressBar()
-
-        self.data_pointer = 0
 
         # Create a layout -- Device-specific plot
 
@@ -409,14 +341,13 @@ class DevicePlotTab(QWidget):
 
         self.f_ax_data_line = None
 
-    def start_data_worker(self):
-        self.worker = DataWorker(self)
-        self.worker_thread = QThread()
-        self.worker.moveToThread(self.worker_thread)
-        self.worker.update_plot_signal.connect(self.update_plot)
-        self.worker_thread.started.connect(self.worker.start_data_worker)
-        self.worker_thread.start()
 
+        #Initialize Timer for plotting
+
+        # self.timer = QTimer()
+        # self.timer.setInterval(30)
+        # self.timer.timeout.connect(self.update_plot)
+        # self.plot_timer_started = False
     
     
     def start_progress_bar_work(self):
@@ -459,19 +390,64 @@ class DevicePlotTab(QWidget):
     #     compensated_data['strain_2'][0].item() * self.c2 + compensated_data['strain_3'][0].item()* self.c3) / 3
 
     #     self.f_ax_data.append(f_ax_data_temp)
-  
+    def update_data(self, parsed_data):
+        # # Extract timestamp and append it
+        #timestamp_str = compensated_data['timestamp'][0]
+        #timestamp = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").microsecond
+        self.time_data.append(parsed_data[4])
+        # # Append uncompensated strain values for zero calibration
+        self.strain_1_data_raw.append(parsed_data[0])
+        self.strain_2_data_raw.append(parsed_data[1])
+        self.strain_3_data_raw.append(parsed_data[2])
+
+
+        compensated_data = [x1 - x2 for (x1, x2) in zip(parsed_data[0:3], self.strain_offsets)]
 
         
-    @pyqtSlot()
+        print(compensated_data)
+        # # Append compensated strain values for plotting, multiplied by 10^6 to convert to µV/V
+        self.strain_1_data.append(compensated_data[0]* 1e3)
+        self.strain_2_data.append(compensated_data[1]* 1e3)
+        self.strain_3_data.append(compensated_data[2]* 1e3)
+        self.temp_data.append(parsed_data[3])
+        
+        
+        #c1 c2 c3 are constant or can be modified through main window
+        f_ax_data_temp =( (compensated_data[0] /self.c1) +
+        (compensated_data[1]/ self.c2 )+ (compensated_data[2]/ self.c3)) / (3)
+
+        self.f_ax_data.append(f_ax_data_temp)
+        
+        basis_x = [+(compensated_data[0] /self.c1), +(compensated_data[1]/ self.c2 ), -(compensated_data[2]/ self.c3)]
+        basis_y = [-(compensated_data[0] /self.c1), +(compensated_data[1]/ self.c2 ), +(compensated_data[2]/ self.c3)]
+        
+        Lx = [5, 2.5, 2.5]
+        Ly = [0, 4.33, 4.33]
+        
+        m_x = sum(basis_x[i]*Lx[i] for i in range(len(basis_x)))
+        m_y = sum(basis_y[i]*Ly[i] for i in range(len(basis_y)))
+        self.mx.append(m_x)
+        self.my.append(m_y)
+        self.m_total.append(math.sqrt((m_x*m_x)+(m_y*m_y)))
+
+
+        #Start plotting only from 90 values
+        # if len(self.time_data) > self.window_span and not self.plot_timer_started:
+        #     self.timer.start()
+        #     self.plot_timer_started = True
+        
+        self.update_plot()
+        
+
     def update_plot(self):
-        if (len(self.strain_1_data) % self.window_step == 0): #every step (100)
-            if len(self.strain_1_data) >= self.window_span+(self.plotter_count*self.window_step): #depending won whether the window span is reached
+        if (len(self.time_data) % self.window_step == 0): #every step (100)
+            if len(self.time_data) >= self.window_span+(self.plotter_count*self.window_step): #depending won whether the window span is reached
                 _from = self.plotter_count* self.window_step
                 _end = self.window_span+(self.plotter_count*self.window_step)
                 self.plotter_count += 1
-            elif len(self.strain_1_data) < self.window_span:
+            elif len(self.time_data) < self.window_span:
                 _from = 0
-                _end = len(self.strain_1_data)
+                _end = len(self.time_data)
             else:
                 return
             
@@ -548,6 +524,7 @@ class DevicePlotTab(QWidget):
         except TypeError:
             print("No constnats given/Incorrect input format")
 
+        
     
     @asyncSlot()
     async def schedule_ble_task(self):
@@ -556,7 +533,6 @@ class DevicePlotTab(QWidget):
         self.connect_button.setEnabled(False)
         try:
             await self.ble_task
-            await self.update_task
         except asyncio.CancelledError:
             print("BLE Task Cancelled")
     
@@ -570,13 +546,8 @@ class DevicePlotTab(QWidget):
             print(f"Notification from {sender}: {ieee754_hex_to_float(data.hex())} (raw: {data})")
         elif any(uuid in sender_uuid for uuid in CHARACTERISTIC_UUIDS[4]):  # Combined UUID
             parsed_data = parse_data(data.hex(), self.time_record)
-            self.time_data.append(parsed_data[4])
-            # # Append uncompensated strain values for zero calibration
-            self.strain_1_data_raw.append(parsed_data[0])
-            self.strain_2_data_raw.append(parsed_data[1])
-            self.strain_3_data_raw.append(parsed_data[2])  
-            self.temp_data.append(parsed_data[3])
-            #print(f"{parsed_data}") 
+            self.update_data(parsed_data)   
+            print(f"{parsed_data}") 
         else:
             print(f"Notification from {sender}: Unknown characteristic (raw: {data})")
 
@@ -590,8 +561,6 @@ class DevicePlotTab(QWidget):
                     if client.is_connected:
                         print(f"Connected to {self.device_address}")
                         self.stop_progress_bar_work()
-                        self.start_data_worker()
-                        
                         # Subscribe to notifications for all characteristics
                         print("Subscribing to notifications for all characteristics...")
                         try:
@@ -604,7 +573,7 @@ class DevicePlotTab(QWidget):
                                 if not client.is_connected:  # Verbindung prüfen
                                     print("Connection lost. Attempting to reconnect...")
                                     break  # Verlasse die Schleife, um die Verbindung neu aufzubauen
-                                await asyncio.sleep(10)  # Anpassbare Wartezeit
+                                await asyncio.sleep(20)  # Anpassbare Wartezeit
                         except asyncio.CancelledError:
                             print("Stopping notifications...")
                             for char_uuid in SERVICE_UUID:
