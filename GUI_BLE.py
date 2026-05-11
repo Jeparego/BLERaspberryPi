@@ -215,8 +215,6 @@ class DevicePlotTab(QWidget):
         super().__init__()
         self.device_address = device_address
         self.ble_task = None
-        #self.worker = None
-        #self.worker_thread = None
         self.c1 = 0.01
         self.c2 = 0.01
         self.c3 = 0.01
@@ -297,17 +295,17 @@ class DevicePlotTab(QWidget):
 
         
         self.ax_f = self.figure.add_subplot(1,2,2)
-        self.ax_f.set_title('Axial Force', fontsize=10)
+        self.ax_f.set_title('Force, Momentum and Angle', fontsize=10)
         #self.ax_f.tick_params(axis='x', rotation=45)
         self.ax_f.tick_params(axis='y', direction='in')
-        self.ax_f.set_ylabel('Force [kN]', fontsize=8)  
+        self.ax_f.set_ylabel('Angle [Degree]', fontsize=8)  
         self.ax_f.set_ylim(-1, 1)
         
         self.ax_f.set_xlabel('Time', fontsize=8)
         
-         # Create a second y-axis for the temperature
+         # Create a second y-axis for the total force
         self.ax_f_2 = self.ax_f.twinx()
-        self.ax_f_2.set_ylabel('Moment (Nm)', rotation=270, fontsize=8)
+        self.ax_f_2.set_ylabel('Value', rotation=270, fontsize=8)
         # Move the temperature axis ticks and label to the right side
         self.ax_f_2.yaxis.set_label_position("right")
         self.ax_f_2.tick_params(axis='y', direction='in')
@@ -373,6 +371,25 @@ class DevicePlotTab(QWidget):
     def update_bar(self, cnt):
         self.informative_bar.setValue(cnt)
 
+    #Implemetation for Numpy Array (later implementation)
+    # def update_data(self, parsed_data):
+    #     # # Extract timestamp and append it
+    #     #timestamp_str = compensated_data['timestamp'][0]
+    #     #timestamp = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").microsecond
+    #     self.time_data.append(compensated_data['timestamp'][0].item())
+    #     # # Append uncompensated strain values for zero calibration
+    #     self.raw_data.append(parsed_data)
+    #     # # Append compensated strain values for plotting, multiplied by 10^6 to convert to µV/V
+    #     self.strain_1_data.append(compensated_data['strain_1'][0].item() * 1e3)
+    #     self.strain_2_data.append(compensated_data['strain_2'][0].item() * 1e3)
+    #     self.strain_3_data.append(compensated_data['strain_3'][0].item() * 1e3)
+    #     self.temp_data.append(compensated_data['temp'][0].item())
+
+    #     #c1 c2 c3 are constant or can be modified through main window
+    #     f_ax_data_temp = (compensated_data['strain_1'][0].item() * self.c1 +
+    #     compensated_data['strain_2'][0].item() * self.c2 + compensated_data['strain_3'][0].item()* self.c3) / 3
+
+    #     self.f_ax_data.append(f_ax_data_temp)
     def update_data(self, parsed_data):
         # # Extract timestamp and append it
         #timestamp_str = compensated_data['timestamp'][0]
@@ -393,33 +410,114 @@ class DevicePlotTab(QWidget):
         self.strain_2_data.append(compensated_data[1]* 1e3)
         self.strain_3_data.append(compensated_data[2]* 1e3)
         self.temp_data.append(parsed_data[3])
+
+        k_fact = 2.01
+        k_fact_a = 2.08 # in main direction
+        k_fact_b = 2.01 #in perpendicular direction
+        E_modulus = 210e3; #N/mm2
+        bridge_fact = 1.3
+        bridge_fact_a = 1.0 # in main direction
+        bridge_fact_b = 0.3 #in perpendicular direction
+
+        eps_calc = 1/1000*4/(k_fact_a*bridge_fact_a + k_fact_b*bridge_fact_b)
+
+
+        r_SG = 5 # mm
+
+        r_SG_bohr = 1 # mm
+
+        SG1_angle_x = 60 
+        '''
+        SG2_angle_x = 60 # Grad
+
+        SG3_angle_x = 0 # % Grad
+
+        SG1_x = -r_SG*math.cos(math.radians(SG1_angle_x))
+
+        SG1_y = r_SG*math.sin(math.radians(SG1_angle_x))
+
+        SG2_x = -r_SG*math.cos(math.radians(SG2_angle_x))
+
+        SG2_y = -r_SG*math.sin(math.radians(SG2_angle_x))
+
+        SG3_x = r_SG*math.cos(math.radians(SG3_angle_x))
+
+        SG3_y = r_SG*math.sin(math.radians(SG3_angle_x))'''
+
+        SG1_y = r_SG*math.sin(math.radians(SG1_angle_x))
+
+        angles = [0, 120, 240]
+
+        x_total = sum([x*math.cos(math.radians(y)) for x,y in zip(compensated_data, angles)])
+        y_total = sum([x*math.sin(math.radians(y)) for x,y in zip(compensated_data, angles)])
+
+        angle_total = math.degrees(math.atan(y_total/x_total))
+
+
+
+
+        # z-coordinates are strain measurements by SGs
+
+        D_spannung = 17.6545 # mm
+
+        W = (math.pi*D_spannung^4/64-1*math.pi*r_SG_bohr^4/4-2*(math.pi*r_SG_bohr^2*SG1_y^2))/(D_spannung/2)
+
+        E = 210e3 # N/mm2
         
+
+        sg1_strain_max = compensated_data[0]*eps_calc
+
+        sg2_strain_max = compensated_data[1]*eps_calc
+
+        sg3_strain_max = compensated_data[2]*eps_calc
+
         
+        sgx_strain_mean = (sg1_strain_max+sg2_strain_max+sg3_strain_max)/3
+
+
+
+        M_b_max = ((D_spannung/2)/r_SG*math.sqrt(((sg3_strain_max-sgx_strain_mean))^2 +((sg1_strain_max-sg2_strain_max)/math.sqrt(3))^2))*W*E #/ 1000 #Nm
+
+        sigma_SA = E*sgx_strain_mean
+
+        F_sa = sigma_SA*math.pi*D_spannung^2/4 
+
+        self.f_ax_data.append(angle_total)
+        self.mx.append(F_sa)
+        self.my.append(M_b_max)
+
+        #self.mx.append(M_b_max)
+        #self.my.append(F_sa)
+
+            #Start plotting only from 90 values
+            # if len(self.time_data) > self.window_span and not self.plot_timer_started:
+            #     self.timer.start()
+            #     self.plot_timer_started = True
+    
+        '''
         #c1 c2 c3 are constant or can be modified through main window
         f_ax_data_temp =( (compensated_data[0] /self.c1) +
         (compensated_data[1]/ self.c2 )+ (compensated_data[2]/ self.c3)) / (3)
 
         self.f_ax_data.append(f_ax_data_temp)
         
-        basis_x = [+(compensated_data[0] /self.c1), +(compensated_data[1]/ self.c2 ), -(compensated_data[2]/ self.c3)]
-        basis_y = [-(compensated_data[0] /self.c1), +(compensated_data[1]/ self.c2 ), +(compensated_data[2]/ self.c3)]
+        basis_x = [(compensated_data[0] /self.c1), -(compensated_data[1]/ self.c2 ), (compensated_data[2]/ self.c3)]
+        basis_y = [(compensated_data[0] /self.c1), -(compensated_data[1]/ self.c2 ), -(compensated_data[2]/ self.c3)]
         
-        Lx = [5, 2.5, 2.5]
-        Ly = [0, 4.33, 4.33]
+        Lx = [0, 4.33, 4.33]
+        Ly = [5, 0.0025, 0.0025]
         
         m_x = sum(basis_x[i]*Lx[i] for i in range(len(basis_x)))
         m_y = sum(basis_y[i]*Ly[i] for i in range(len(basis_y)))
         self.mx.append(m_x)
         self.my.append(m_y)
         self.m_total.append(math.sqrt((m_x*m_x)+(m_y*m_y)))
-
-        #Start plotting only from 90 values
-        # if len(self.time_data) > self.window_span and not self.plot_timer_started:
-        #     self.timer.start()
-        #     self.plot_timer_started = True
-
+        '''
+       
+    
         self.update_plot()
         
+
     def update_plot(self):
         if (len(self.time_data) % self.window_step == 0): #every step (100)
             if len(self.time_data) >= self.window_span+(self.plotter_count*self.window_step): #depending won whether the window span is reached
@@ -459,11 +557,11 @@ class DevicePlotTab(QWidget):
                 self.ax.legend(loc='upper left', fontsize=10)
                 self.temp_line = self.ax2.plot(self.time_data[window_slice], self.temp_data[window_slice], color='r', label="Temperature")
                 self.ax2.legend(loc='upper right', fontsize=10)
-                self.f_ax_data_line = self.ax_f.plot(self.time_data[window_slice], self.f_ax_data[window_slice], label="Total Force")
+                self.f_ax_data_line = self.ax_f.plot(self.time_data[window_slice], self.f_ax_data[window_slice], label="Angle")
                 self.ax_f.legend(loc='upper left', fontsize=10)
-                self.mx_line = self.ax_f_2.plot(self.time_data[window_slice], self.mx[window_slice], color='r', label="Moment x")
-                self.my_line = self.ax_f_2.plot(self.time_data[window_slice], self.my[window_slice], color='m', label="Moment y")
-                self.m_total_line = self.ax_f_2.plot(self.time_data[window_slice], self.m_total[window_slice], color='g', label="Total moment")
+                self.mx_line = self.ax_f_2.plot(self.time_data[window_slice], self.mx[window_slice], color='r', label="Axial Force [N]")
+                self.my_line = self.ax_f_2.plot(self.time_data[window_slice], self.my[window_slice], color='m', label="Moment [10e3 Nm]")
+                #self.m_total_line = self.ax_f_2.plot(self.time_data[window_slice], self.m_total[window_slice], color='g', label="Total moment")
                 self.ax_f_2.legend(loc='upper right', fontsize=10)
                 
             else:
@@ -475,7 +573,7 @@ class DevicePlotTab(QWidget):
                 self.f_ax_data_line[0].set_data(self.time_data[window_slice], self.f_ax_data[window_slice])
                 self.mx_line[0].set_data(self.time_data[window_slice], self.mx[window_slice])
                 self.my_line[0].set_data(self.time_data[window_slice], self.my[window_slice])
-                self.m_total_line[0].set_data(self.time_data[window_slice], self.m_total[window_slice])
+                #self.m_total_line[0].set_data(self.time_data[window_slice], self.m_total[window_slice])
                 self.ax.set_xlim(window)
                 self.ax2.set_xlim(window)
                 self.ax_f.set_xlim(window)
@@ -504,7 +602,9 @@ class DevicePlotTab(QWidget):
             print(self.inputDialogConstants.getInputs())
         except TypeError:
             print("No constnats given/Incorrect input format")
-            
+
+        
+    
     @asyncSlot()
     async def schedule_ble_task(self):
         self.ble_task = asyncio.create_task(self.ble_task_run())
@@ -512,7 +612,6 @@ class DevicePlotTab(QWidget):
         self.connect_button.setEnabled(False)
         try:
             await self.ble_task
-            #await self.update_task
         except asyncio.CancelledError:
             print("BLE Task Cancelled")
     
@@ -541,7 +640,6 @@ class DevicePlotTab(QWidget):
                     if client.is_connected:
                         print(f"Connected to {self.device_address}")
                         self.stop_progress_bar_work()
-                        #self.start_data_worker()
                         # Subscribe to notifications for all characteristics
                         print("Subscribing to notifications for all characteristics...")
                         try:
