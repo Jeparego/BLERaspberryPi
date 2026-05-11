@@ -1,0 +1,100 @@
+%Dazu müssen zuerst einige Variablen definiert werden:
+
+ 
+
+k_fact = 2.01;
+
+k_fact_a = 2.08; % in main direction
+
+k_fact_b = 2.01; % in perpendicular direction
+
+E_modulus = 210e3; %N/mm2
+
+bridge_fact = 1.3;
+
+bridge_fact_a = 1.0; % in main direction
+
+bridge_fact_b = 0.3; % in perpendicular direction
+
+ 
+
+eps_calc = 1/1000*4/(k_fact_a*bridge_fact_a + k_fact_b*bridge_fact_b);
+
+ 
+
+r_SG = 5; % mm
+
+r_SG_bohr = 1; % mm
+
+SG1_angle_x = 60; % Grad
+
+SG2_angle_x = 60; % Grad
+
+SG3_angle_x = 0; % Grad
+
+SG1_x = -r_SG*cos(deg2rad(SG1_angle_x));
+
+SG1_y = r_SG*sin(deg2rad(SG1_angle_x));
+
+SG2_x = -r_SG*cos(deg2rad(SG2_angle_x));
+
+SG2_y = -r_SG*sin(deg2rad(SG2_angle_x));
+
+SG3_x = r_SG*cos(deg2rad(SG3_angle_x));
+
+SG3_y = r_SG*sin(deg2rad(SG3_angle_x));
+
+% z-coordinates are strain measurements by SGs
+
+ 
+
+D_spannung = 17.6545; % mm
+
+W = (pi*D_spannung^4/64-1*pi*r_SG_bohr^4/4-2*(pi*r_SG_bohr^2*SG1_y^2))/(D_spannung/2)
+
+E = 210e3; % N/mm2
+
+ 
+
+% Das sind die Messwerte der Schraube sg1_meas, ... --> die musst du auf die Namen deiner Variablen anpassen, 
+
+% achte auf Einheit. Wenn es Werte von 0.000xyz sind bei Belastung also in V/V, musst du bei M_b_max am Ende die /1000 löschen
+
+ 
+
+sg1_meas = 0.7244; % mV/V
+
+sg2_meas = 0.9193; % mV/V
+
+sg3_meas = 0.6746; % mV/V
+
+ 
+
+sg1_strain_max = sg1_meas*eps_calc
+
+sg2_strain_max = sg2_meas*eps_calc
+
+sg3_strain_max = sg3_meas*eps_calc
+
+ 
+
+sgx_strain_mean = (sg1_strain_max+sg2_strain_max+sg3_strain_max)/3;
+
+ 
+
+M_b_max = ((D_spannung/2)/r_SG*sqrt(((sg3_strain_max-sgx_strain_mean))^2 ...
+
+    +((sg1_strain_max-sg2_strain_max)/sqrt(3))^2))*W*E / 1000 % Nm
+
+ 
+
+sigma_SA = E*sgx_strain_mean;
+
+F_SA = sigma_SA*pi*D_spannung^2/4
+
+ 
+
+ 
+
+% M_b_max und F_SA kannst du dann in den Plot machen
+
