@@ -451,7 +451,10 @@ class DevicePlotTab(QWidget):
         x_total = sum([x*math.cos(math.radians(y)) for x,y in zip(compensated_data, angles)])
         y_total = sum([x*math.sin(math.radians(y)) for x,y in zip(compensated_data, angles)])
 
-        angle_total = math.degrees(math.atan(y_total/x_total))
+        if x_total == 0:
+            angle_total = 0
+        else:
+            angle_total = math.degrees(math.atan(y_total/x_total))
 
 
 
@@ -460,7 +463,7 @@ class DevicePlotTab(QWidget):
 
         D_spannung = 17.6545 # mm
 
-        W = (math.pi*D_spannung^4/64-1*math.pi*r_SG_bohr^4/4-2*(math.pi*r_SG_bohr^2*SG1_y^2))/(D_spannung/2)
+        W = (math.pi*math.pow(D_spannung,4)/64-math.pi*math.pow(r_SG_bohr,4)/4-2*(math.pi*math.pow(r_SG_bohr,2)*math.pow(SG1_y,2)))/(D_spannung/2)
 
         E = 210e3 # N/mm2
         
@@ -476,15 +479,17 @@ class DevicePlotTab(QWidget):
 
 
 
-        M_b_max = ((D_spannung/2)/r_SG*math.sqrt(((sg3_strain_max-sgx_strain_mean))^2 +((sg1_strain_max-sg2_strain_max)/math.sqrt(3))^2))*W*E #/ 1000 #Nm
+        M_b_max = ((D_spannung/2)/r_SG*math.sqrt(math.pow(sg3_strain_max-sgx_strain_mean,2)+math.pow((sg1_strain_max-sg2_strain_max)/math.sqrt(3),2)))*W*E #/ 1000 #Nm
 
         sigma_SA = E*sgx_strain_mean
 
-        F_sa = sigma_SA*math.pi*D_spannung^2/4 
+        F_sa = sigma_SA*math.pi*math.pow(D_spannung,2)/4 
 
         self.f_ax_data.append(angle_total)
         self.mx.append(F_sa)
         self.my.append(M_b_max)
+
+        self.update_plot()
 
         #self.mx.append(M_b_max)
         #self.my.append(F_sa)
@@ -515,7 +520,7 @@ class DevicePlotTab(QWidget):
         '''
        
     
-        self.update_plot()
+        
         
 
     def update_plot(self):
@@ -545,8 +550,11 @@ class DevicePlotTab(QWidget):
             max_force = max(self.f_ax_data[window_slice])
             self.ax_f.set_ylim(min_force-0.1, max_force+0.1)
                   
-            min_moment = min(min(self.mx[window_slice]), min(self.my[window_slice]), min(self.m_total[window_slice]))
-            max_moment = max(max(self.mx[window_slice]), max(self.my[window_slice]), max(self.m_total[window_slice]))
+            min_moment = min(min(self.mx[window_slice]), min(self.my[window_slice]))
+            max_moment = max(max(self.mx[window_slice]), max(self.my[window_slice]))
+
+            # min_moment = min(min(self.mx[window_slice]), min(self.my[window_slice]), min(self.m_total[window_slice]))
+            # max_moment = max(max(self.mx[window_slice]), max(self.my[window_slice]), max(self.m_total[window_slice]))
             self.ax_f_2.set_ylim(min_moment-0.2, max_moment+0.2)
             
             if self.temp_line is None:
@@ -652,7 +660,7 @@ class DevicePlotTab(QWidget):
                                 if not client.is_connected:  # Verbindung prüfen
                                     print("Connection lost. Attempting to reconnect...")
                                     break  # Verlasse die Schleife, um die Verbindung neu aufzubauen
-                                await asyncio.sleep(20)  # Anpassbare Wartezeit
+                                await asyncio.sleep(10)  # Anpassbare Wartezeit
                         except asyncio.CancelledError:
                             print("Stopping notifications...")
                             for char_uuid in SERVICE_UUID:
